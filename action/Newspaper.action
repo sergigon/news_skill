@@ -1,0 +1,8 @@
+#goal definition
+string command
+---
+#result definition
+int32 result
+---
+#feedback definition
+int32 feedback

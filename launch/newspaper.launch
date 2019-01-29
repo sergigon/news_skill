@@ -1,0 +1,9 @@
+<?xml version="1.0"?>
+<launch>
+	<arg name="robot"/>
+	<group ns="$(arg robot)">
+		<node name="newspaper_skill" pkg="newspaper_skill" type="newspaper_node.py" output="screen"/>
+	</group>
+</launch>
+
+
