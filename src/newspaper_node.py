@@ -255,7 +255,7 @@ class NewspaperSkill(Skill):
             print('__________________________________________________')
             ###### Image in summary
             print('\nImage in summary:')
-            soup = BeautifulSoup(article['summary'])
+            soup = BeautifulSoup(article['summary'], features="html.parser")
             try:
                 image_url = soup.find('img')['src']
             except TypeError as e:
