@@ -163,7 +163,9 @@ class NewspaperSkill(Skill):
         self._parser.body_width = 1000 # Number of charcaters per line (long number so no '\n' character appears)
 
         # Rss objects
-        self._rss_feed = self.feeds['bbc']['portada'] # Feed url
+        self._feed = 'el_pais'
+        self._news = 'portada'
+        self._rss_feed = self.feeds[self._feed][self._news] # Feed url
         self._file_lines = [] # List of cache urls
 
         # init the skill
@@ -215,6 +217,67 @@ class NewspaperSkill(Skill):
             text = text[0:-1]
         return text
 
+    def get_image(self, article):
+        image_url = -1
+
+        # Search in summary
+        rospy.logdebug('Searching image in summary')
+        soup = BeautifulSoup(article['summary'], features="html.parser")
+        try:
+            image_url = soup.find('img')['src']
+            rospy.logdebug('Image selected from summary')
+        except TypeError as e: # Non existing
+            image_url = -1
+            rospy.logwarn('No image in summary')
+
+        # Links
+        rospy.logdebug('Searching image in links')
+        if 'links' in article:
+            for link in article['links']:
+                if(link['type'].find('image') >= 0): # It is a image
+                    image_url = link['href']
+                    rospy.logdebug('Image selected from links')
+                    ######## Europa Press conversion ########
+                    if(self._feed == 'europa_press'):
+                        rospy.logdebug('Europa Press conversion')
+                        rospy.logdebug('Original link: ' + image_url)
+                        # Searchs the position of the extension
+                        pos_l = len(image_url)-5 # Indicates how many character to search from the end of string
+                        pos_r = pos_l + image_url[pos_l:].find('.') # Position of the extension ('.jpg')
+                        # Searchs if exists 'vX' at the end
+                        pos_l = pos_r-4
+                        pos_aux = image_url[pos_l:pos_r].find('_v')
+                        if (pos_aux !=-1):
+                            pos_r = pos_l + pos_aux
+                        # Searchs if exists '_XXX' at the end
+                        pos_l = pos_r-5
+                        pos_aux = image_url[pos_l:pos_r].find('_')
+                        if (pos_aux !=-1):
+                            pos_l = pos_l + pos_aux
+                            # Modify the size of the image
+                            s1 = list(image_url)
+                            for i in range(pos_l+1, pos_r):
+                                s1.pop(pos_l+1)
+                            s1.insert(pos_l+1, '800')
+                            image_url = ''.join(s1)
+                        rospy.logdebug('Modified link: ' + image_url)
+                    ##########################################
+                    break
+        else:
+            rospy.logwarn('No image in links')
+
+        # Media thumbnail
+        rospy.logdebug('Searching image in media thumbnail')
+        if 'media_thumbnail' in article:
+            image_url = article['media_thumbnail'][0]['url']
+            rospy.logdebug('Image selected from media_thumbnail')
+            if(len(article['media_thumbnail']) > 1):
+                rospy.logwarn('More than 1 media thumbnail: %s' % len(article['media_thumbnail']))
+        else:
+            rospy.logwarn('No image in media thumbnail')
+
+        return image_url
+
     def show_article_info(self, article):
         """
         Show info of the article in the terminal.
@@ -239,6 +302,7 @@ class NewspaperSkill(Skill):
                 summary_value = self.html2text_conv(summary_value)
             '''
             print(summary_value)
+            
             print('__________________________________________________')
             ##### Content
             if 'content' in article:
@@ -269,9 +333,9 @@ class NewspaperSkill(Skill):
             print('__________________________________________________')
             ###### Image
             print('\nImage:')
-            if 'media_thumbnail' in article:
-                for media in article["media_thumbnail"]:
-                    print media
+            image_url = self.get_image(article)
+            if (image_url != -1):
+                print(image_url)
             else:
                 print('No image')
             print('##################################################')
