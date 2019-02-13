@@ -2,7 +2,7 @@
 string command
 ---
 #result definition
-int32 result
+int8 result
 ---
 #feedback definition
-int32 feedback
+int8 status
