@@ -25,6 +25,7 @@ import html2text # To convert html to text (https://pypi.org/project/html2text/)
 import datetime
 import requests
 import signal
+import time
 from io import BytesIO # https://stackoverflow.com/questions/9772691/feedparser-with-timeout
 from bs4 import BeautifulSoup # http://villageblacksmith.consulting/extracting-image-from-rss-in-python/
 
@@ -688,7 +689,17 @@ class NewspaperSkill(Skill):
                 ################ Processes the goal ################
                 print(goal.command)
                 if(self.goal_handler(goal.command)):
-                    self._result.result = self.rss_reader()
+                    t_max = 20
+                    n_games = 5
+                    i_games = 0
+                    t1 = time.time()
+                    t2 = time.time()
+                    while(i_games < n_games and t2-t1 < t_max):
+                        self._result.result = self.rss_reader()
+                        rospy.sleep(5)
+                        i_games += 1
+                        t2 = time.time()
+                        print ('>>>>> Time!!!! %s'%(t2-t1))
                 else:
                     self._result.result = -1 # Error
                 #==================================================#
