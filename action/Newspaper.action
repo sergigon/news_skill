@@ -1,8 +1,16 @@
 #goal definition
-string command
+string skill_command
+uint16 max_time
+uint16 number_plays
+uint8 proactivity
 ---
 #result definition
-int8 result
+int8 ERROR = -1
+int8 SUCCESS = 0
+int8 FAIL = 1
+int8 skill_result
 ---
 #feedback definition
-int8 status
+string app_status
+uint8 percentage_completed
+bool engagement

@@ -21,21 +21,23 @@ import actionlib
 #import pdb; pdb.set_trace()
 
 import feedparser
-import html2text # To convert html to text (https://pypi.org/project/html2text/)
-import datetime
 import requests
 import signal
 import time
+from threading import Thread
 from io import BytesIO # https://stackoverflow.com/questions/9772691/feedparser-with-timeout
 from bs4 import BeautifulSoup # http://villageblacksmith.consulting/extracting-image-from-rss-in-python/
 
 # Messages
 from std_msgs.msg import String, Empty
 from interaction_msgs.msg import CA
-from common_msgs.msg import KeyValuePair as kvpa
 import newspaper_skill.msg
 
+# Local libraries
 import exceptions_lib
+from ca_functions import makeCA_tablet_info, makeCA_etts_info
+from general_functions import html2text_conv
+from cache_manager import CacheManager
 
 # Skill variables
 # Package name
@@ -48,6 +50,25 @@ class TimeOut(Exception):
     __module__ = Exception.__module__
     pass
 '''
+class PauseException(Exception):
+    pass
+
+class ExceptThread(Thread):
+    def run(self):
+        ########### Pause ###########
+        while(self._pause and not self._as.is_preempt_requested()): # Pause and cancel not requested
+            rospy.logwarn("Pause requested")
+            rospy.sleep(1)
+
+        ############# State Preempted checking #############
+        # Si el goal esta en estado Preempted (es decir,   #
+        # hay un goal en cola o se cancela el goal         #
+        # actual), activo la excepcion                     #
+        ####################################################
+        if self._as.is_preempt_requested():
+            rospy.logwarn("Preempt requested")
+            raise ActionlibException
+        #==================================================#
 
 class NewspaperSkill(Skill):
     """
@@ -158,6 +179,8 @@ class NewspaperSkill(Skill):
         # class variables
         self._as = None # SimpleActionServer variable
         self._goal = "" # Goal a recibir
+        self._goal_exec = False # Indicates if goal is being handled
+        self._pause = False # Indicates if pause
 
         # Local paths
         rospack = rospkg.RosPack()
@@ -165,21 +188,15 @@ class NewspaperSkill(Skill):
         self._data_path = self._root_path + '/data/' # Data path
         self._news_cache = self._data_path + 'news_cache.txt' # Cache file
         # Tablet paths
-        self._default_path = 'default.png' # Default image
-
-        # html2text object
-        self._parser = html2text.HTML2Text()
-        self._parser.images_to_alt = True # Discard image data, only keep alt text
-        self._parser.ignore_images = True # Don't include any formatting for images
-        self._parser.ignore_links = True # Ignores links
-        self._parser.ignore_tables = True
-        self._parser.body_width = 1000 # Number of charcaters per line (long number so no '\n' character appears)
+        self._default_path = '/default.png' # Default image
 
         # Rss objects
         self._feed_name = 'tu_tiempo'
         self._category_name = 'portada'
         #self._rss_feed = self.feeds[self._feed_name][self._category_name] # Feed url
-        self._file_lines = [] # List of cache urls
+
+        # Cache object
+        self._cache_manager = CacheManager(self._data_path)
 
         # Register the signal function handler
         signal.signal(signal.SIGALRM, self.handler)
@@ -194,7 +211,7 @@ class NewspaperSkill(Skill):
 
         @raise rospy.ROSException: if the service is inactive.
         """
-        print("create_msg_srv() called")
+        rospy.logdebug("create_msg_srv() called")
 
         # publishers and subscribers
         self.ca_pub = rospy.Publisher("hri_manager/ca_activations", CA, queue_size=1) # CA publisher
@@ -219,7 +236,7 @@ class NewspaperSkill(Skill):
 
         # servers and clients
             
-        print("shutdown_msg_srv() called")
+        rospy.logdebug("shutdown_msg_srv() called")
 
     def handler(self, signum, frame):
         """
@@ -229,62 +246,17 @@ class NewspaperSkill(Skill):
         print "Forever is over!"
         raise exceptions_lib.TimeOut("end of time")
 
-    def makeCA_etts_info(self, etts_text):
-        now = rospy.get_rostime().nsecs
-
-        msg = CA()
-        msg.type = "robot_giving_info"
-        msg.ca_name = str(now)
-        msg.duration = 0
-        msg.priority = 1
-        msg.emitter = "newspaper_ca"
-        
-        kvp = kvpa()
-        kvp.key = "etts_text"
-        kvp.value = etts_text
-        msg.values.append(kvp)
-        print "Sending CA_info"
-        return msg
-
-    def makeCA_tablet_info(self, image_url, image_type):
-        now = rospy.get_rostime().nsecs
-
-        msg = CA()
-        msg.type = "robot_giving_info"
-        msg.ca_name = str(now)
-        msg.duration = 0
-        msg.priority = 1
-        msg.emitter = "newspaper_ca"
-        
-        kvp = kvpa()
-        kvp.key = "tablet_type"
-        kvp.value = image_type
-        msg.values.append(kvp)
-
-        kvp = kvpa()
-        kvp.key = "tablet_url"
-        kvp.value = image_url
-        msg.values.append(kvp)
-        print "Sending CA_info"
-        return msg
-
-
-    def html2text_conv(self, html):
-        """
-        Converts hmtl text into plain text.
-        """
-
-        print('### Content parsed ###')
-        text = self._parser.handle(html)
-        # If text ends with '\n', ti is removed
-        while(text[-1:] == '\n'):
-            text = text[0:-1]
-        return text
-
     def get_image(self, article):
-        if(article == -1):
-            return -1, -1
-        image_url, image_type = -1, -1
+        """
+        Searchs for the best image in the article.
+
+        @param article: Article to search in.
+        
+        @return image_url: Url of image found. If not found, it returns default image.
+        @return image_type: Type of image found ('web' or 'image').
+        """
+
+        image_url, image_type = -1, 'web'
 
         # Search in summary
         rospy.logdebug('Searching image in summary')
@@ -292,37 +264,36 @@ class NewspaperSkill(Skill):
             soup = BeautifulSoup(article['summary'], features="html.parser")
             try:
                 image_url = soup.find('img')['src']
-                rospy.logdebug('Image selected from summary: %s' % image_url)
+                rospy.logdebug('>> Image selected from summary: %s' % image_url)
             except TypeError as e: # Non existing
                 image_url = -1
-                rospy.logwarn('No image in summary')
+                rospy.logdebug('>> No image in summary')
         else:
-            rospy.logwarn('No summary')
+            rospy.logwarn('>> No summary')
 
         # Media thumbnail
         found = False
         rospy.logdebug('Searching image in media thumbnail')
         if 'media_thumbnail' in article:
             image_url = article['media_thumbnail'][0]['url']
-            rospy.logdebug('Image selected from media_thumbnail: %s' % image_url)
+            rospy.logdebug('>> Image selected from media_thumbnail: %s' % image_url)
             found = True
             if(len(article['media_thumbnail']) > 1):
-                rospy.logwarn('More than 1 media thumbnail: %s' % len(article['media_thumbnail']))
+                rospy.logdebug('>> More than 1 media thumbnail: %s' % len(article['media_thumbnail']))
         if(not found):
-            rospy.logwarn('No image in media thumbnail')
+            rospy.logdebug('>> No image in media thumbnail')
 
         # Media content
         found = False
         rospy.logdebug('Searching image in media content')
         if 'media_content' in article:
-            print str(article['media_content'])
             image_url = article['media_content'][0]['url']
-            rospy.logdebug('Image selected from media_content: %s' % image_url)
+            rospy.logdebug('>> Image selected from media_content: %s' % image_url)
             found = True
             if(len(article['media_content']) > 1):
-                rospy.logwarn('More than 1 media content: %s' % len(article['media_content']))
+                rospy.logdebug('>> More than 1 media content: %s' % len(article['media_content']))
         if(not found):
-            rospy.logwarn('No image in media content')
+            rospy.logdebug('>> No image in media content')
 
         # Links
         found = False
@@ -331,12 +302,12 @@ class NewspaperSkill(Skill):
             for link in article['links']:
                 if(link['type'].find('image') >= 0): # It is a image
                     image_url = link['href']
-                    rospy.logdebug('Image selected from links: %s' % image_url)
+                    rospy.logdebug('>> Image selected from links: %s' % image_url)
                     found = True
                     ######## Europa Press conversion ########
                     if(self._feed_name == 'europa_press'):
-                        rospy.logdebug('Europa Press conversion')
-                        rospy.logdebug('Original link: ' + image_url)
+                        rospy.logdebug('>> Europa Press conversion')
+                        rospy.logdebug('>> -- Original link: ' + image_url)
                         # Searchs the position of the extension
                         pos_l = len(image_url)-5 # Indicates how many character to search from the end of string
                         pos_r = pos_l + image_url[pos_l:].find('.') # Position of the extension ('.jpg')
@@ -356,16 +327,33 @@ class NewspaperSkill(Skill):
                                 s1.pop(pos_l+1)
                             s1.insert(pos_l+1, '800')
                             image_url = ''.join(s1)
-                        rospy.logdebug('Modified link: ' + image_url)
+                        rospy.logdebug('>> -- Modified link: ' + image_url)
                     ##########################################
                     break
         if(not found):
-            rospy.logwarn('No image in links')
+            rospy.logdebug('>> No image in links')
 
         if image_url == -1:
             return self._default_path, 'image'
         else:
             return image_url, 'web'
+
+    def show_feed_info(self, parsed_content):
+        print('############### Feed: ###############')
+        try:
+            print(parsed_content['feed']['title'])
+            if(parsed_content['bozo']==0):
+                print 'Xml well-formed'
+            else:
+                print 'Xml NOT well-formed'
+
+            print('Number of articles: ' + str(len(parsed_content['entries'])))
+            print('Image: ' + str(parsed_content['feed']['image']['href']))
+        except KeyError as e:
+            rospy.logerr('KeyError: ' + str(e))
+
+        print('#####################################')
+
 
     def show_article_info(self, article):
         """
@@ -391,43 +379,51 @@ class NewspaperSkill(Skill):
             # Checks if it is necessary to parse the text
             summary_value = article['summary_detail']['value']
             if(article['summary_detail']['type'] == 'text/html'):
-                summary_value = self.html2text_conv(summary_value)
+                summary_value = html2text_conv(summary_value)
             print(summary_value)
-            print('__________________________________________________')
 
             print('##################################################')
         except KeyError as e:
-            print('KeyError: ' + str(e))
+            rospy.logerr('KeyError: ' + str(e))
             return -1
 
         return 0
 
     def show_article_voice(self, article):
-        print('Say article with voice')
+        rospy.loginfo('Showing article with voice')
         if(article == -1):
-            msg = self.makeCA_etts_info('No hay mas noticias que mostrar del dia de hoy')
+            text = 'No hay mas noticias que mostrar del dia de hoy'
+            rospy.loginfo('>> %s' % text)
+            msg = makeCA_etts_info(text)
             self.ca_pub.publish(msg)
             return -1
         try:
             ###### Title
-            print('Title voice:')
-            msg = self.makeCA_etts_info(article['title'])
+            text = article['title'].encode('utf-8')
+            rospy.loginfo('>> Title: ' + text)
+            msg = makeCA_etts_info(text)
             self.ca_pub.publish(msg)
-            print('__________________________________________________')
             ###### Summary
-            print('\nSummary (' + article['summary_detail']['type'] + ') voice:')
             # Checks if it is necessary to parse the text
             summary_value = article['summary_detail']['value']
             if(article['summary_detail']['type'] == 'text/html'):
-                summary_value = self.html2text_conv(summary_value)
-            msg = self.makeCA_etts_info(summary_value)
+                summary_value = html2text_conv(summary_value)
+            rospy.loginfo('>> Summary (%s): ' % article['summary_detail']['type'])
+            text = summary_value.encode('utf-8')
+            rospy.loginfo(text)
+            msg = makeCA_etts_info(text)
             self.ca_pub.publish(msg)
-            print('__________________________________________________')
+
         except KeyError as e:
-            print('KeyError: ' + str(e))
+            rospy.logerr('KeyError: ' + str(e))
             return -1
 
         return 0
+
+    def show_article_tablet(self, image_url, image_type):
+        rospy.loginfo('Sending image to tablet')
+        msg = makeCA_tablet_info(image_url, image_type)
+        self.ca_pub.publish(msg)
 
 
     def new_article_finder(self, rss_info):
@@ -438,12 +434,15 @@ class NewspaperSkill(Skill):
         if(len(rss_info['entries']) == 0):
             return -2 # Rss not valid
 
+        # Gets cache ids
+        id_list = self._cache_manager.cache_get_id()
+
         # Loop for the entries
         found = False
         for article in rss_info['entries']:
             found = False
             # Checks if id is in the list
-            for id_n in self._file_lines:
+            for id_n in id_list:
                 if(article['id'] == id_n):
                     found = True
                     break
@@ -455,70 +454,24 @@ class NewspaperSkill(Skill):
         if(found):
             return -1
 
-    def cache_refresh(self):
-        """
-        Refresh the cache.
-
-        If cache does not exist, it is created.
-        If date is not updated, it erases the content and updates the date.
-        """
-
-        print('Refreshing cache')
-
-        # Actual date
-        date = datetime.datetime.now().date()
-
-        # Reads first line of cache
-        first_line = '' # First line of the file
-        try:
-            file = open(self._news_cache, "r") # Read file
-            first_line = file.readline().replace("\n", "") # Gets first line
-            file.close() # Close file
-        except IOError as e: # File does not exists
-            print('ERROR: ' + str(e))
-
-        # If date is not updated or not exists, it erases the file and updates the date
-        
-        if(first_line[:5] != '_____' or first_line[5:] != str(date)):
-            print('Updating cache date')
-            file = open(self._news_cache, "w") # Write file
-            file.write('_____' + str(date)) # _____{date}
-            file.close() # Close file
-
-    def cache_update(self, url):
-        '''
-        Updates the cache with the new url.
-        '''
-
-        file = open(self._news_cache, "w") # Write file
-        self._file_lines.append(str(url))
-        text = ''
-        for line in self._file_lines:
-            text += str(line) + '\n'
-        file.write(text) # id
-        file.close() # Close file
-
-    def cache_get_id(self):
-        """
-        Gets id from the cache and export them to the variable self._file_lines.
-        """
-
-        file = open(self._news_cache, "r") # Read file
-        self._file_lines = file.readlines() # Get lines
-        file.close() # Close file
-        for i in range(len(self._file_lines)): # Erases the line breaks
-            self._file_lines[i] = self._file_lines[i].replace("\n", "")
-
     def rss_reader(self):
         """
         Rss management function.
+
+        @return parsed_content:
+        @return article:
         """
+
+        ######### Cache refreshing ########
+        # Refreshes the cache
+        self._cache_manager.cache_refresh()
+        ###################################
 
         # Search for the next source feed
         for feed_name in self.feeds:
             if self._category_name in self.feeds[feed_name]:
                 ################### Feed found ###################
-                print('######## Getting new feed: %s ########' % feed_name)
+                rospy.loginfo('######## Getting new feed: %s ########' % feed_name)
                 self._feed_name = feed_name
                 feed_url = self.feeds[self._feed_name][self._category_name]
 
@@ -532,7 +485,7 @@ class NewspaperSkill(Skill):
                     rospy.logdebug('Number of attempts: %s' % n_attempts)
                     try:
                         # Do request using requests library and timeout
-                        print('Making request')
+                        rospy.loginfo('Making request')
                         resp = requests.get(feed_url, timeout=5.05)
                     except requests.ReadTimeout as e:
                         rospy.logerr("Timeout when reading RSS: %s" % e)
@@ -546,7 +499,7 @@ class NewspaperSkill(Skill):
                         out = True
 
                     else: # No errors
-                        print('Request done\n')
+                        rospy.logdebug('Request done')
                         request_ok = True
                         out = True
 
@@ -566,60 +519,15 @@ class NewspaperSkill(Skill):
                 # Parse content
                 parsed_content = feedparser.parse(content)
                 #################################
-                #print parsed_content##############################
 
-                ######### Cache checking ########
-                # Refreshes the cache
-                self.cache_refresh()
-
-                # Gets cache ids
-                self.cache_get_id()
-
+                ########## Article search #########
                 # Searchs new article
                 article = self.new_article_finder(parsed_content)
-                #################################
+                ###################################
+
                 ######### Article found #########
                 if(article != -1 and article != -2):
-                    # Feed info
-                    print('############### Feed: ###############')
-                    try:
-                        print(parsed_content['feed']['title'])
-                        if(parsed_content['bozo']==0):
-                            print 'Xml well-formed'
-                        else:
-                            print 'Xml NOT well-formed'
-
-                        print('Number of articles: ' + str(len(parsed_content['entries'])))
-                        print('Image: ' + str(parsed_content['feed']['image']['href']))
-                    except KeyError as e:
-                        print('KeyError: ' + str(e))
-
-                    print('#####################################')
-
-
-                    # Shows the info in the article
-                    self.show_article_info(article)
-
-                    # Shows image on the tablet
-                    print('Searching article image')
-                    image_url, image_type = self.get_image(article)
-                    print image_url, image_type
-                    print('Sending image to tablet')
-                    if(image_url != -1):
-                        msg = self.makeCA_tablet_info(image_url, image_type)
-                        self.ca_pub.publish(msg)
-                    else:
-                        print('No image sent to the tablet')
-
-                    # Shows info with voice
-                    self.show_article_voice(article)
-
-                    # Updates the cache with the new article
-                    if(article != -1):
-                        self.cache_update(article['id'])
-
-                    #print str(article)
-                    return 0
+                    return parsed_content, article
                 #################################
                 ######### Feed not valid ########
                 if(article==-2):
@@ -633,7 +541,46 @@ class NewspaperSkill(Skill):
         self.show_article_voice(-1)
         self.show_article_info(-1)
         
-        return 0
+        return -1, -1
+
+    def show_info_handler(self, parsed_content, article):
+        """
+        Show info handler.
+
+        @param art
+        """
+
+        # Searchs the image in the article
+        rospy.loginfo('Searching article image')
+        image_url, image_type = self.get_image(article)
+        rospy.loginfo('Image selected: %s (%s)' % (image_url, image_type))
+
+        repeat = True
+        while(repeat):
+            repeat = False
+            # Feed info
+            self.show_feed_info(parsed_content)
+
+            # Shows the info in the article
+            self.show_article_info(article)
+
+            # Shows image on the tablet
+            self.show_article_tablet(image_url, image_type)
+
+            # Shows info with voice
+            self.show_article_voice(article)
+
+            print('Waiting')
+            while(run_ca):
+                if pause:
+                    shutdown_msg(tablet, voice)
+                    while(pause and not cancel):
+                        rospy.sleep(1)
+                if cancel:
+                    shutdown_msg(tablet, voice)
+                self.exception_check()
+                rospy.sleep(1)
+            print('Waited')
 
     def goal_handler(self, goal):
         """
@@ -651,14 +598,48 @@ class NewspaperSkill(Skill):
             or goal == 'tecnologia'
             or goal == 'ciencia'
             or goal == 'cultura'):
-            print('goal accepted')
+            rospy.loginfo('goal accepted')
             self._category_name = goal
             return True
 
         else:
-            print('goal NOT accepted')
+            rospy.logerr('goal NOT accepted')
             self._category_name = ''
             return False
+
+    def exception_check(self):
+
+        
+        ########### Pause ###########
+        if(self._pause):
+            while(self._pause and not self._as.is_preempt_requested()): # Pause and cancel not requested
+                rospy.logwarn("Pause requested")
+                rospy.sleep(1)
+            print("Resume requested")
+
+        ############# State Preempted checking #############
+        # Si el goal esta en estado Preempted (es decir,   #
+        # hay un goal en cola o se cancela el goal         #
+        # actual), activo la excepcion                     #
+        ####################################################
+        if self._as.is_preempt_requested():
+            rospy.logwarn("Preempt requested")
+            raise ActionlibException
+        #==================================================#
+
+
+    def pause_exec(self):
+        if(self._goal_exec):
+            self._pause = True
+
+
+    def resume_exec(self):
+        self._pause = False
+
+    def pause_wait():
+        while(self._pause and not self._as.is_preempt_requested()):
+            rospy(1)
+
 
     def execute_cb(self, goal):
         """
@@ -667,73 +648,83 @@ class NewspaperSkill(Skill):
         @param goal: newspaper_skill goal.
         """
 
+        self._goal_exec = True
+        self._pause = False
+
         # default values (In progress)
-        self._result.result = -1 # Error
-        self._feedback.status = 0
+        self._result.skill_result = 0 # Success
+        self._feedback.app_status = 0
 
         ############### Si la skill esta activa: ###################
         if self._status == self.RUNNING:
-            print ("RUNNING...")
+            rospy.loginfo("RUNNING...")
             
             try:
-                ############# State Preempted checking #############
-                # Si el goal esta en estado Preempted (es decir,   #
-                # hay un goal en cola o se cancela el goal         #
-                # actual), activo la excepcion                     #
-                ####################################################
-                if self._as.is_preempt_requested():
-                    print("Preempt requested")
-                    raise ActionlibException
-                #==================================================#
+                self.exception_check() # Checks if a exception is requested
                 
                 ################ Processes the goal ################
-                print(goal.command)
-                if(self.goal_handler(goal.command)):
+                rospy.loginfo('Goal: %s' % goal)
+                if(self.goal_handler(goal.skill_command)):
                     t_max = 20
                     n_games = 5
                     i_games = 0
                     t1 = time.time()
                     t2 = time.time()
-                    while(i_games < n_games and t2-t1 < t_max):
-                        self._result.result = self.rss_reader()
-                        rospy.sleep(5)
-                        i_games += 1
-                        t2 = time.time()
-                        print ('>>>>> Time!!!! %s'%(t2-t1))
+                    self.exception_check() # Checks if a exception is requested
+                    while(i_games < n_games and t2-t1 < t_max and self._result.skill_result != -1):
+                        self.exception_check() # Checks if a exception is requested
+                        # Get rss info
+                        parsed_content, article = self.rss_reader()
+                        self.exception_check() # Checks if a exception is requested
+                        if(parsed_content==-1):
+                            self._result.skill_result = -1 # Error
+                        else:
+                            print('\n')
+                            # Show info
+                            self.show_info_handler(parsed_content, article)
+                            # Updates the cache with the new article
+                            self._cache_manager.cache_update(article['id'])
+                            i_games += 1
+                            t2 = time.time()
+                            print ('>>>>> Time!!!! %s'%(t2-t1))
+
+                            print('\n')
                 else:
-                    self._result.result = -1 # Error
+                    self._result.skill_result = -1 # Error
                 #==================================================#
             
             ######### Si se ha hecho un preempted o cancel: ########
             except ActionlibException:
                 rospy.logwarn('[%s] Preempted or cancelled' % pkg_name)                 
                 # FAIL
-                self._result.result = 1 # Preempted
+                self._result.skill_result = 1 # Preempted
             #======================================================#
             
         #==========================================================#
         ############# Si la skill no esta activa: ##################
         else:
-            print("STOPPED")
+            rospy.logwarn("STOPPED")
             rospy.logwarn("[%s] Cannot send a goal when the skill is stopped" % pkg_name)
             # ERROR
-            self._result.result = -1 # Fail
+            self._result.skill_result = -1 # Fail
         #==========================================================#
+
+        self._goal_exec = False
         
         # Envio el feedback al final del loop
         self._as.publish_feedback(self._feedback)
         
         #### Envio del resultado y actualizacion del status del goal ###
         # Send result
-        if self._result.result == 0:
+        if self._result.skill_result == 0:
             rospy.logdebug("setting goal to succeeded")
             self._as.set_succeeded(self._result)
         else:
             rospy.logdebug("setting goal to preempted")
             self._as.set_preempted(self._result)
-        print("###################")
-        print("### Result sent ###")
-        print("###################")
+        rospy.loginfo("###################")
+        rospy.loginfo("### Result sent ###")
+        rospy.loginfo("###################")
         #==============================================================#
 
 
@@ -750,6 +741,9 @@ if __name__ == '__main__':
         # create and spin the node
         node = NewspaperSkill()
         rospy.sleep(1)
-        rospy.spin()
+
+        rate = rospy.Rate(10)
+        while not rospy.is_shutdown():
+            rate.sleep()
     except rospy.ROSInterruptException:
         pass
