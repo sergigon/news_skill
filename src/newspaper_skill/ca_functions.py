@@ -21,13 +21,14 @@ def makeCA_etts_info(etts_text):
     @param etts_text: Text to be sent.
 
     @return msg: CA message.
+    @return msg_name: CA name.
     """
 
-    now = rospy.get_rostime().nsecs
+    msg_name = str(rospy.get_rostime().nsecs)
 
     msg = CA()
     msg.type = "robot_giving_info"
-    msg.ca_name = str(now)
+    msg.ca_name = msg_name
     msg.duration = 0
     msg.priority = 1
     msg.emitter = "newspaper_ca"
@@ -37,7 +38,7 @@ def makeCA_etts_info(etts_text):
     kvp.value = etts_text
     msg.values.append(kvp)
     rospy.logdebug("Sending CA_info")
-    return msg
+    return msg, msg_name
 
 def makeCA_tablet_info(image_url, image_type):
     """
@@ -49,11 +50,11 @@ def makeCA_tablet_info(image_url, image_type):
     @return msg: CA message.
     """
 
-    now = rospy.get_rostime().nsecs
+    msg_name = str(rospy.get_rostime().nsecs)
 
     msg = CA()
     msg.type = "robot_giving_info"
-    msg.ca_name = str(now)
+    msg.ca_name = msg_name
     msg.duration = 0
     msg.priority = 1
     msg.emitter = "newspaper_ca"
@@ -68,4 +69,4 @@ def makeCA_tablet_info(image_url, image_type):
     kvp.value = image_url
     msg.values.append(kvp)
     rospy.logdebug("Sending CA_info")
-    return msg
+    return msg, msg_name

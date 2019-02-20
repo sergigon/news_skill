@@ -53,6 +53,9 @@ class TimeOut(Exception):
 class PauseException(Exception):
     pass
 
+class ErrorException(Exception):
+    pass
+
 class ExceptThread(Thread):
     def run(self):
         ########### Pause ###########
@@ -181,6 +184,16 @@ class NewspaperSkill(Skill):
         self._goal = "" # Goal a recibir
         self._goal_exec = False # Indicates if goal is being handled
         self._pause = False # Indicates if pause
+        self._step = 'init' # Init, rss_reader, show_info
+        self._out = False # Varable to exit the while
+
+        # Goal varaibles
+        self._max_time = 0
+        self._number_plays = 0
+        self._t0 = 0
+        self._t1 = 0
+        self._time_run = 0
+        self._i_games = 0
 
         # Local paths
         rospack = rospkg.RosPack()
@@ -399,32 +412,32 @@ class NewspaperSkill(Skill):
             return -1
         try:
             ###### Title
-            text = article['title'].encode('utf-8')
-            rospy.loginfo('>> Title: ' + text)
-            msg = makeCA_etts_info(text)
-            self.ca_pub.publish(msg)
+            title_text = article['title'].encode('utf-8')
+            rospy.loginfo('>> Title: ' + title_text)
             ###### Summary
             # Checks if it is necessary to parse the text
             summary_value = article['summary_detail']['value']
             if(article['summary_detail']['type'] == 'text/html'):
                 summary_value = html2text_conv(summary_value)
             rospy.loginfo('>> Summary (%s): ' % article['summary_detail']['type'])
-            text = summary_value.encode('utf-8')
-            rospy.loginfo(text)
-            msg = makeCA_etts_info(text)
-            self.ca_pub.publish(msg)
+            summary_text = summary_value.encode('utf-8')
+            rospy.loginfo(summary_text)
+            text = title_text + ' \\\\pause=500 ' + summary_text
 
         except KeyError as e:
             rospy.logerr('KeyError: ' + str(e))
             return -1
+        
+        msg, msg_name = makeCA_etts_info(text)
+        self.ca_pub.publish(msg)
 
-        return 0
+        return msg_name
 
     def show_article_tablet(self, image_url, image_type):
         rospy.loginfo('Sending image to tablet')
-        msg = makeCA_tablet_info(image_url, image_type)
+        msg, msg_name = makeCA_tablet_info(image_url, image_type)
         self.ca_pub.publish(msg)
-
+        return msg_name
 
     def new_article_finder(self, rss_info):
         '''
@@ -543,44 +556,25 @@ class NewspaperSkill(Skill):
         
         return -1, -1
 
-    def show_info_handler(self, parsed_content, article):
+    def show_info_handler(self, parsed_content, article, image_url, image_type):
         """
         Show info handler.
 
         @param art
         """
+        # Feed info
+        self.show_feed_info(parsed_content)
 
-        # Searchs the image in the article
-        rospy.loginfo('Searching article image')
-        image_url, image_type = self.get_image(article)
-        rospy.loginfo('Image selected: %s (%s)' % (image_url, image_type))
+        # Shows the info in the article
+        self.show_article_info(article)
 
-        repeat = True
-        while(repeat):
-            repeat = False
-            # Feed info
-            self.show_feed_info(parsed_content)
+        # Shows image on the tablet
+        tablet_name_msg = self.show_article_tablet(image_url, image_type)
 
-            # Shows the info in the article
-            self.show_article_info(article)
+        # Shows info with voice
+        etts_name_msg = self.show_article_voice(article)
 
-            # Shows image on the tablet
-            self.show_article_tablet(image_url, image_type)
-
-            # Shows info with voice
-            self.show_article_voice(article)
-
-            print('Waiting')
-            while(run_ca):
-                if pause:
-                    shutdown_msg(tablet, voice)
-                    while(pause and not cancel):
-                        rospy.sleep(1)
-                if cancel:
-                    shutdown_msg(tablet, voice)
-                self.exception_check()
-                rospy.sleep(1)
-            print('Waited')
+        return tablet_name_msg, etts_name_msg
 
     def goal_handler(self, goal):
         """
@@ -589,57 +583,102 @@ class NewspaperSkill(Skill):
         Checks if the goal is appropriate. If true, it fills the variable self._category_name.
         """
 
-        if(goal == 'portada'
-            or goal == 'lo_ultimo'
-            or goal == 'espana'
-            or goal == 'internacional'
-            or goal == 'opinion'
-            or goal == 'deportes'
-            or goal == 'tecnologia'
-            or goal == 'ciencia'
-            or goal == 'cultura'):
-            rospy.loginfo('goal accepted')
-            self._category_name = goal
-            return True
+        # Fill variables
+        self._category_name = goal.skill_command
+        self._max_time = goal.max_time
+        self._number_plays = goal.number_plays
 
-        else:
-            rospy.logerr('goal NOT accepted')
-            self._category_name = ''
+        # Check command
+        if(not (self._category_name == 'portada'
+                    or self._category_name == 'lo_ultimo'
+                    or self._category_name == 'espana'
+                    or self._category_name == 'internacional'
+                    or self._category_name == 'opinion'
+                    or self._category_name == 'deportes'
+                    or self._category_name == 'tecnologia'
+                    or self._category_name == 'ciencia'
+                    or self._category_name == 'cultura')):
+            rospy.logerr('skill_command NOT accepted')
             return False
 
-    def exception_check(self):
+        # Check max_time and number_plays
+        if(self._max_time>0 and self._number_plays>0):
+            self._limit_method = 'both'
+        elif(self._max_time>0):
+            self._limit_method = 'time'
+        elif(self._number_plays>0):
+            self._limit_method = 'plays'
+        else:
+            rospy.logerr('max_time and number_plays NOT accepted. Specify one of them')
+            return False
 
-        
-        ########### Pause ###########
-        if(self._pause):
-            while(self._pause and not self._as.is_preempt_requested()): # Pause and cancel not requested
-                rospy.logwarn("Pause requested")
-                rospy.sleep(1)
-            print("Resume requested")
+        # Goal accepted
+        rospy.loginfo('Goal accepted')
+        return True
+
+    def exception_check(self, deactivation = [], t0 = -1, t1 = -1):
+
+        if(self._pause or self._as.is_preempt_requested()):
+            # CA deactivation
+            if(len(deactivation)<=0):
+                self.ca_deactivation_pub.publish()
+                self.ca_deactivation_pub.publish()
+            # Time update
+            if(t0!=-1 and t1!=-1):
+                self._time_run += t1 - t0
 
         ############# State Preempted checking #############
         # Si el goal esta en estado Preempted (es decir,   #
         # hay un goal en cola o se cancela el goal         #
         # actual), activo la excepcion                     #
         ####################################################
-        if self._as.is_preempt_requested():
+        if(self._as.is_preempt_requested()):
             rospy.logwarn("Preempt requested")
             raise ActionlibException
+            return
         #==================================================#
+        
+        ########### Pause ###########
+        if(self._pause):
+            raise PauseException
+            return
+            '''
+            while(self._pause and not self._as.is_preempt_requested()): # Pause and cancel not requested
+                rospy.logwarn("Pause requested")
+                rospy.sleep(1)
+            print("Resume requested")
+            '''
+
+        
 
 
     def pause_exec(self):
         if(self._goal_exec):
             self._pause = True
 
-
     def resume_exec(self):
         self._pause = False
 
-    def pause_wait():
+    def pause_wait(self):
+        rospy.loginfo('Start waiting')
         while(self._pause and not self._as.is_preempt_requested()):
-            rospy(1)
+            rospy.logdebug('waiting...')
+            rospy.sleep(1)
 
+    def percentage_maker(self):
+        pass
+
+    def out_goal(self):
+        if(self._limit_method == 'both'):
+            out_goal = self._i_games < self._number_plays and self._time_run <= self._max_time
+        elif(self._limit_method == 'time'):
+            out_goal = self._time_run <= self._max_time
+        elif(self._limit_method == 'plays'):
+            out_goal = self._i_games < self._number_plays
+        else:
+            out_goal = True
+
+        return out_goal
 
     def execute_cb(self, goal):
         """
@@ -650,57 +689,108 @@ class NewspaperSkill(Skill):
 
         self._goal_exec = True
         self._pause = False
+        self._step = 'Process_goal'
+        self._percentage = 0
+        self._limit_method = ''
+        self._time_run = 0
+        self._i_games = 0
+        self._exec_out = False
 
         # default values (In progress)
         self._result.skill_result = 0 # Success
-        self._feedback.app_status = 0
+        self._feedback.app_status = 'prueba'
 
         ############### Si la skill esta activa: ###################
         if self._status == self.RUNNING:
+            print('\n')
             rospy.loginfo("RUNNING...")
-            
-            try:
-                self.exception_check() # Checks if a exception is requested
-                
-                ################ Processes the goal ################
-                rospy.loginfo('Goal: %s' % goal)
-                if(self.goal_handler(goal.skill_command)):
-                    t_max = 20
-                    n_games = 5
-                    i_games = 0
-                    t1 = time.time()
-                    t2 = time.time()
+            ###################### Exec while ######################
+            while(not self._exec_out):
+                try:
+                    self.pause_wait() # If wait is asked it enters a loop
+
                     self.exception_check() # Checks if a exception is requested
-                    while(i_games < n_games and t2-t1 < t_max and self._result.skill_result != -1):
-                        self.exception_check() # Checks if a exception is requested
-                        # Get rss info
-                        parsed_content, article = self.rss_reader()
-                        self.exception_check() # Checks if a exception is requested
-                        if(parsed_content==-1):
-                            self._result.skill_result = -1 # Error
-                        else:
-                            print('\n')
+                    if(self._step=='Process_goal'):
+                        ############ Processes the goal ############
+                        rospy.loginfo('Goal: %s' % goal)
+                        if(not self.goal_handler(goal)): # Goal NOT correct
+                            raise ErrorException('Goal NOT correct')
+                        self._step = 'Get_rss_info'
+                        #==========================================#
+
+                    while(self.out_goal()):
+                        t0 = time.time()
+
+                        self.exception_check(t0 = t0, t1 = time.time()) # Checks if a exception is requested
+                        if(self._step=='Get_rss_info'):
+                            # Get rss info
+                            parsed_content, article = self.rss_reader()
+                            if(parsed_content==-1):
+                                raise ErrorException('No More News')
+                                break
+                            self._step = 'Search_image'
+
+                        self.exception_check(t0 = t0, t1 = time.time()) # Checks if a exception is requested
+                        if(self._step=='Search_image'):
+                            # Searchs the image in the article
+                            rospy.loginfo('Searching article image')
+                            image_url, image_type = self.get_image(article)
+                            rospy.loginfo('Image selected: %s (%s)' % (image_url, image_type))
+                            self._step = 'Show_info'
+                        
+                        self.exception_check(t0 = t0, t1 = time.time()) # Checks if a exception is requested
+                        if(self._step=='Show_info'):
                             # Show info
-                            self.show_info_handler(parsed_content, article)
+                            tablet_name_msg, etts_name_msg = self.show_info_handler(parsed_content, article, image_url, image_type)
+                            print('Waiting')
+                            i=0
+                            # Continue when ca has finished
+                            while(i<10):
+                                self.exception_check(deactivation = [tablet_name_msg, etts_name_msg], t0 = t0, t1 = time.time()) # Checks if a exception is requested
+                                i+=1
+                                rospy.sleep(1)
+                            print('Waited')
+                            self._step = 'Cache_update'
+
+                        self.exception_check(t0 = t0, t1 = time.time()) # Checks if a exception is requested
+                        if(self._step=='Cache_update'):
                             # Updates the cache with the new article
                             self._cache_manager.cache_update(article['id'])
-                            i_games += 1
-                            t2 = time.time()
-                            print ('>>>>> Time!!!! %s'%(t2-t1))
+                            self._step = 'Get_rss_info'
 
-                            print('\n')
-                else:
+                            if(self._limit_method == 'both' or self._limit_method == 'plays'):
+                                self._i_games += 1
+                                print('>>>>> Plays!!!! %s' % self._i_games)
+                            if(self._limit_method == 'both' or self._limit_method == 'time'):
+                                self._time_run += time.time() - t0
+                                print('>>>>> Time!!!! %s' % self._time_run)
+
+                    self._exec_out = True
+                    print('Salgo del exec while')
+                    
+                #################### Exceptions ####################
+                ### Preempted or cancel:
+                except ActionlibException:
+                    rospy.logwarn('[%s] Preempted or cancelled' % pkg_name)
+                    self._exec_out = True        
+                    # FAIL
+                    self._result.skill_result = 1 # Preempted
+                ### Error
+                except ErrorException as e:
+                    rospy.logerr(e)
+                    self._exec_out = True        
+                    # FAIL
                     self._result.skill_result = -1 # Error
+                ### Pause
+                except PauseException as e:
+                    rospy.logwarn(e)
+                    self._exec_out = False
                 #==================================================#
-            
-            ######### Si se ha hecho un preempted o cancel: ########
-            except ActionlibException:
-                rospy.logwarn('[%s] Preempted or cancelled' % pkg_name)                 
-                # FAIL
-                self._result.skill_result = 1 # Preempted
+
             #======================================================#
-            
+            print('\n')
         #==========================================================#
+
         ############# Si la skill no esta activa: ##################
         else:
             rospy.logwarn("STOPPED")
@@ -709,7 +799,6 @@ class NewspaperSkill(Skill):
             self._result.skill_result = -1 # Fail
         #==========================================================#
 
-        self._goal_exec = False
         
         # Envio el feedback al final del loop
         self._as.publish_feedback(self._feedback)
@@ -727,9 +816,7 @@ class NewspaperSkill(Skill):
         rospy.loginfo("###################")
         #==============================================================#
 
-
-        # Inicializacion variables
-
+        self._goal_exec = False
 
 
 if __name__ == '__main__':

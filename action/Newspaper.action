@@ -3,6 +3,7 @@ string skill_command
 uint16 max_time
 uint16 number_plays
 uint8 proactivity
+string skill_status
 ---
 #result definition
 int8 ERROR = -1
