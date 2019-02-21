@@ -87,90 +87,90 @@ class NewspaperSkill(Skill):
     # Feeds
     feeds = {
         'bbc': {
-            'portada': 'http://www.bbc.co.uk/mundo/index.xml',
-            'lo_ultimo': 'http://www.bbc.co.uk/mundo/ultimas_noticias/index.xml',
-            'espana': '',
-            'internacional': 'http://www.bbc.co.uk/mundo/temas/internacional/index.xml',
+            'cover_page': 'http://www.bbc.co.uk/mundo/index.xml',
+            'last_news': 'http://www.bbc.co.uk/mundo/ultimas_noticias/index.xml',
+            'spain': '',
+            'international': 'http://www.bbc.co.uk/mundo/temas/internacional/index.xml',
             'opinion': '',
-            'deportes': '',
-            'tecnologia': 'http://www.bbc.co.uk/mundo/temas/tecnologia/index.xml',
-            'ciencia': 'http://www.bbc.co.uk/mundo/temas/ciencia/index.xml',
-            'cultura': 'http://www.bbc.co.uk/mundo/temas/cultura/index.xml'
+            'sports': '',
+            'technology': 'http://www.bbc.co.uk/mundo/temas/tecnologia/index.xml',
+            'science': 'http://www.bbc.co.uk/mundo/temas/ciencia/index.xml',
+            'culture': 'http://www.bbc.co.uk/mundo/temas/cultura/index.xml'
         },
         'europa_press': {
-            'portada': 'https://www.europapress.es/rss/rss.aspx',
-            'lo_ultimo': '',
-            'espana': 'https://www.europapress.es/rss/rss.aspx?ch=00066',
-            'internacional': 'https://www.europapress.es/rss/rss.aspx?ch=00069',
+            'cover_page': 'https://www.europapress.es/rss/rss.aspx',
+            'last_news': '',
+            'spain': 'https://www.europapress.es/rss/rss.aspx?ch=00066',
+            'international': 'https://www.europapress.es/rss/rss.aspx?ch=00069',
             'opinion': '',
-            'deportes': 'https://www.europapress.es/rss/rss.aspx?ch=00067',
-            'tecnologia': 'https://www.europapress.es/rss/rss.aspx?ch=00564',
-            'ciencia': '',
-            'cultura': 'https://www.europapress.es/rss/rss.aspx?ch=00126'
+            'sports': 'https://www.europapress.es/rss/rss.aspx?ch=00067',
+            'technology': 'https://www.europapress.es/rss/rss.aspx?ch=00564',
+            'science': '',
+            'culture': 'https://www.europapress.es/rss/rss.aspx?ch=00126'
         },
         'libertad_digital': {
-            'portada': 'http://feeds2.feedburner.com/libertaddigital/portada',
-            'lo_ultimo': '',
-            'espana': 'http://feeds2.feedburner.com/libertaddigital/nacional',
-            'internacional': 'http://feeds2.feedburner.com/libertaddigital/internacional',
+            'cover_page': 'http://feeds2.feedburner.com/libertaddigital/portada',
+            'last_news': '',
+            'spain': 'http://feeds2.feedburner.com/libertaddigital/nacional',
+            'international': 'http://feeds2.feedburner.com/libertaddigital/internacional',
             'opinion': 'http://feeds2.feedburner.com/libertaddigital/opinion',
-            'deportes': 'http://feeds2.feedburner.com/libertaddigital/deportes',
-            'tecnologia': 'http://feeds2.feedburner.com/libertaddigital/internet',
-            'ciencia': '',
-            'cultura': 'http://feeds.feedburner.com/libertaddigital/cultura'
+            'sports': 'http://feeds2.feedburner.com/libertaddigital/deportes',
+            'technology': 'http://feeds2.feedburner.com/libertaddigital/internet',
+            'science': '',
+            'culture': 'http://feeds.feedburner.com/libertaddigital/cultura'
         },
         'el_pais': {
-            'portada': 'http://ep00.epimg.net/rss/elpais/portada.xml',
-            'lo_ultimo': 'http://ep00.epimg.net/rss/tags/ultimas_noticias.xml',
-            'espana': 'http://ep00.epimg.net/rss/politica/portada.xml',
-            'internacional': 'http://ep00.epimg.net/rss/internacional/portada.xml',
+            'cover_page': 'http://ep00.epimg.net/rss/elpais/portada.xml',
+            'last_news': 'http://ep00.epimg.net/rss/tags/ultimas_noticias.xml',
+            'spain': 'http://ep00.epimg.net/rss/politica/portada.xml',
+            'international': 'http://ep00.epimg.net/rss/internacional/portada.xml',
             'opinion': 'http://ep00.epimg.net/rss/elpais/opinion.xml',
-            'deportes': 'http://ep00.epimg.net/rss/deportes/portada.xml',
-            'tecnologia': 'http://ep00.epimg.net/rss/tecnologia/portada.xml',
-            'ciencia': 'http://ep00.epimg.net/rss/elpais/ciencia.xml',
-            'cultura': 'http://ep00.epimg.net/rss/cultura/portada.xml'
+            'sports': 'http://ep00.epimg.net/rss/deportes/portada.xml',
+            'technology': 'http://ep00.epimg.net/rss/tecnologia/portada.xml',
+            'science': 'http://ep00.epimg.net/rss/elpais/ciencia.xml',
+            'culture': 'http://ep00.epimg.net/rss/cultura/portada.xml'
         },
         'tu_tiempo': {
-            'portada': 'http://xml.tutiempo.net/xml/3768.xml'
+            'cover_page': 'http://xml.tutiempo.net/xml/3768.xml'
         }
     }
     feeds_no = {
         # No aptos
         '20_minutos': { # Resumenes largos
-            'portada': 'https://www.20minutos.es/rss/',
-            'lo_ultimo': '',
-            'espana': 'https://www.20minutos.es/rss/nacional/',
-            'internacional': 'https://www.20minutos.es/rss/internacional/',
+            'cover_page': 'https://www.20minutos.es/rss/',
+            'last_news': '',
+            'spain': 'https://www.20minutos.es/rss/nacional/',
+            'international': 'https://www.20minutos.es/rss/internacional/',
             'opinion': 'https://www.20minutos.es/rss/opiniones/',
-            'deportes': 'https://www.20minutos.es/rss/deportes/',
-            'tecnologia': 'https://www.20minutos.es/rss/tecnologia/',
-            'ciencia': 'https://www.20minutos.es/rss/ciencia/',
-            'cultura': 'https://www.20minutos.es/rss/cultura/'
+            'sports': 'https://www.20minutos.es/rss/deportes/',
+            'technology': 'https://www.20minutos.es/rss/tecnologia/',
+            'science': 'https://www.20minutos.es/rss/ciencia/',
+            'culture': 'https://www.20minutos.es/rss/cultura/'
         },
         'el_mundo': { # Sin resumenes
-            'portada': 'https://e00-elmundo.uecdn.es/elmundo/rss/portada.xml',
-            'lo_ultimo': '',
-            'espana': 'https://e00-elmundo.uecdn.es/elmundo/rss/espana.xml',
-            'internacional': 'https://e00-elmundo.uecdn.es/elmundo/rss/internacional.xml',
+            'cover_page': 'https://e00-elmundo.uecdn.es/elmundo/rss/portada.xml',
+            'last_news': '',
+            'spain': 'https://e00-elmundo.uecdn.es/elmundo/rss/espana.xml',
+            'international': 'https://e00-elmundo.uecdn.es/elmundo/rss/internacional.xml',
             'opinion': '',
-            'deportes': 'https://e00-elmundo.uecdn.es/elmundodeporte/rss/portada.xml',
-            'tecnologia': '',
-            'ciencia': 'https://e00-elmundo.uecdn.es/elmundo/rss/ciencia.xml',
-            'cultura': 'https://e00-elmundo.uecdn.es/elmundo/rss/cultura.xml'
+            'sports': 'https://e00-elmundo.uecdn.es/elmundodeporte/rss/portada.xml',
+            'technology': '',
+            'science': 'https://e00-elmundo.uecdn.es/elmundo/rss/ciencia.xml',
+            'culture': 'https://e00-elmundo.uecdn.es/elmundo/rss/cultura.xml'
         },
         'el_espanol': { # Esta vacio
-            'portada': '',
-            'lo_ultimo': '',
-            'espana': '',
-            'internacional': '',
+            'cover_page': '',
+            'last_news': '',
+            'spain': '',
+            'international': '',
             'opinion': '',
-            'deportes': '',
-            'tecnologia': '',
-            'ciencia': '',
-            'cultura': ''
+            'sports': '',
+            'technology': '',
+            'science': '',
+            'culture': ''
         },
         'agencia_efe': { # Sin resumen
-            'portada': 'https://www.efe.com/efe/espana/1/rss'
+            'cover_page': 'https://www.efe.com/efe/espana/1/rss'
         }
     }
 
@@ -205,7 +205,7 @@ class NewspaperSkill(Skill):
 
         # Rss objects
         self._feed_name = 'tu_tiempo'
-        self._category_name = 'portada'
+        self._category_name = 'cover_page'
         #self._rss_feed = self.feeds[self._feed_name][self._category_name] # Feed url
 
         # Cache object
@@ -482,7 +482,13 @@ class NewspaperSkill(Skill):
         ###################################
 
         # Search for the next source feed
+        feed_list = [self._feed_name]
         for feed_name in self.feeds:
+            if feed_name == self._feed_name:
+                continue
+            feed_list.append(feed_name)
+        print feed_list
+        for feed_name in feed_list:
             if self._category_name in self.feeds[feed_name]:
                 ################### Feed found ###################
                 rospy.loginfo('######## Getting new feed: %s ########' % feed_name)
@@ -585,21 +591,26 @@ class NewspaperSkill(Skill):
         """
 
         # Fill variables
-        self._category_name = goal.skill_command
+        skill_command_vec = goal.skill_command.split('/')
+        if(len(skill_command_vec)<=1):
+            return False
+        self._feed_name = skill_command_vec[0]
+        self._category_name = skill_command_vec[1]
         self._max_time = goal.max_time
         self._number_plays = goal.number_plays
 
-        # Check command
-        if(not (self._category_name == 'portada'
-                    or self._category_name == 'lo_ultimo'
-                    or self._category_name == 'espana'
-                    or self._category_name == 'internacional'
-                    or self._category_name == 'opinion'
-                    or self._category_name == 'deportes'
-                    or self._category_name == 'tecnologia'
-                    or self._category_name == 'ciencia'
-                    or self._category_name == 'cultura')):
-            rospy.logerr('skill_command NOT accepted')
+        # Check feed name
+        if not self._feed_name in self.feeds:
+            rospy.logerr('feed name NOT accepted')
+            return False
+
+        # Check category name
+        # Gets the name of one feed to get category access
+        for feed in self.feeds:
+            feed_name = feed
+            break
+        if not self._category_name in self.feeds[feed]:
+            rospy.logerr('category name NOT accepted')
             return False
 
         # Check max_time and number_plays
@@ -755,17 +766,15 @@ class NewspaperSkill(Skill):
                         if(self._limit_method == 'both' or self._limit_method == 'plays'):
                             self._i_plays += 1
                             percentage_plays = int((float(self._i_plays)/float(self._number_plays))*100)
-                            print('>>>>> Plays!!!! %s' % self._i_plays)
-                            print('percentage plays: %s' % percentage_plays)
+                            rospy.logdebug('percentage plays: %s' % percentage_plays)
                         if(self._limit_method == 'both' or self._limit_method == 'time'):
                             self._time_run += time.time() - t0
                             percentage_time = int((float(self._time_run)/float(self._max_time))*100)
-                            print('>>>>> Time!!!! %s' % self._time_run)
-                            print('percentage time: %s' % percentage_time)
+                            rospy.logdebug('percentage time: %s' % percentage_time)
 
                         self._percentage = percentage_plays if percentage_plays > percentage_time else percentage_time
                         self._percentage = self._percentage if self._percentage<100 else 100
-                        print('percentage: %s' % self._percentage)
+                        rospy.loginfo('percentage: %s' % self._percentage)
                         self._feedback.percentage_completed = self._percentage
                         self._step = 'Get_rss_info'
 
