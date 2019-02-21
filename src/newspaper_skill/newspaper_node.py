@@ -663,18 +663,6 @@ class NewspaperSkill(Skill):
             rospy.logdebug('waiting...')
             rospy.sleep(1)
 
-    def out_goal(self):
-        if(self._limit_method == 'both'):
-            out_goal = self._i_plays < self._number_plays and self._time_run <= self._max_time
-        elif(self._limit_method == 'time'):
-            out_goal = self._time_run <= self._max_time
-        elif(self._limit_method == 'plays'):
-            out_goal = self._i_plays < self._number_plays
-        else:
-            out_goal = True
-
-        return out_goal
-
     def execute_cb(self, goal):
         """
         Callback of the node. Activated when a goal is received.
@@ -782,7 +770,7 @@ class NewspaperSkill(Skill):
                         self._step = 'Get_rss_info'
 
                     # Exit while
-                    self._exec_out = self.out_goal() # Exit if limits are exceeded (number_plays, max_time)
+                    self._exec_out = True if self._feedback.percentage_completed>=100 else False # Exit if limits are exceeded (number_plays, max_time)
                     
                 #################### Exceptions ####################
                 ### Preempted or cancel:
