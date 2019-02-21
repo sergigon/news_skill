@@ -37,8 +37,8 @@ def makeCA_etts_info(etts_text):
     kvp.key = "etts_text"
     kvp.value = etts_text
     msg.values.append(kvp)
-    rospy.logdebug("Sending CA_info")
-    return msg, msg_name
+    rospy.logdebug("Sending CA_info (%s)" % msg_name)
+    return msg
 
 def makeCA_tablet_info(image_url, image_type):
     """
@@ -68,5 +68,5 @@ def makeCA_tablet_info(image_url, image_type):
     kvp.key = "tablet_url"
     kvp.value = image_url
     msg.values.append(kvp)
-    rospy.logdebug("Sending CA_info")
-    return msg, msg_name
+    rospy.logdebug("Sending CA_info (%s)" % msg_name)
+    return msg
