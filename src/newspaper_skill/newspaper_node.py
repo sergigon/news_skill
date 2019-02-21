@@ -22,9 +22,7 @@ import actionlib
 
 import feedparser
 import requests
-import signal
 import time
-from threading import Thread
 from io import BytesIO # https://stackoverflow.com/questions/9772691/feedparser-with-timeout
 from bs4 import BeautifulSoup # http://villageblacksmith.consulting/extracting-image-from-rss-in-python/
 
@@ -45,33 +43,11 @@ pkg_name = 'newspaper_skill'
 # Skill name (declare this only if the name is different of 'pkg_name')
 skill_name = "newspaper_skill"
 
-'''# Exceptions
-class TimeOut(Exception):
-    __module__ = Exception.__module__
-    pass
-'''
 class PauseException(Exception):
     pass
 
 class ErrorException(Exception):
     pass
-
-class ExceptThread(Thread):
-    def run(self):
-        ########### Pause ###########
-        while(self._pause and not self._as.is_preempt_requested()): # Pause and cancel not requested
-            rospy.logwarn("Pause requested")
-            rospy.sleep(1)
-
-        ############# State Preempted checking #############
-        # Si el goal esta en estado Preempted (es decir,   #
-        # hay un goal en cola o se cancela el goal         #
-        # actual), activo la excepcion                     #
-        ####################################################
-        if self._as.is_preempt_requested():
-            rospy.logwarn("Preempt requested")
-            raise ActionlibException
-        #==================================================#
 
 class NewspaperSkill(Skill):
     """
@@ -211,16 +187,13 @@ class NewspaperSkill(Skill):
         # Cache object
         self._cache_manager = CacheManager(self._data_path)
 
-        # Register the signal function handler
-        signal.signal(signal.SIGALRM, self.handler)
-
         # init the skill
         Skill.__init__(self, skill_name, CONDITIONAL)
 
 
     def create_msg_srv(self):
         """
-        This function has to be implemented in the children.
+        Callback when a start is requested (and skill is stopped).
 
         @raise rospy.ROSException: if the service is inactive.
         """
@@ -241,7 +214,7 @@ class NewspaperSkill(Skill):
 
     def shutdown_msg_srv(self):
         """
-        This function has to be implemented in the children.
+        Callback when a stop is requested (and skill is running).
         """
 
         # publishers and subscribers
@@ -253,21 +226,12 @@ class NewspaperSkill(Skill):
         self._as.preempt_request = True
 
         # servers and clients
-        
-
-    def handler(self, signum, frame):
-        """
-        Register an handler for the timeout.
-        """
-
-        print "Forever is over!"
-        raise exceptions_lib.TimeOut("end of time")
 
     def get_image(self, article):
         """
         Searchs for the best image in the article.
 
-        @param article: Article to search in.
+        @param article: Article content.
         
         @return image_url: Url of image found. If not found, it returns default image.
         @return image_type: Type of image found ('web' or 'image').
@@ -292,11 +256,12 @@ class NewspaperSkill(Skill):
         found = False
         rospy.logdebug('Searching image in media thumbnail')
         if 'media_thumbnail' in article:
-            image_url = article['media_thumbnail'][0]['url']
-            rospy.logdebug('>> Image selected from media_thumbnail: %s' % image_url)
-            found = True
-            if(len(article['media_thumbnail']) > 1):
-                rospy.logdebug('>> More than 1 media thumbnail: %s' % len(article['media_thumbnail']))
+            if 'url' in article['media_thumbnail'][0]:
+                image_url = article['media_thumbnail'][0]['url']
+                rospy.logdebug('>> Image selected from media_thumbnail: %s' % image_url)
+                found = True
+                if(len(article['media_thumbnail']) > 1):
+                    rospy.logdebug('>> More than 1 media thumbnail: %s' % len(article['media_thumbnail']))
         if(not found):
             rospy.logdebug('>> No image in media thumbnail')
 
@@ -304,11 +269,12 @@ class NewspaperSkill(Skill):
         found = False
         rospy.logdebug('Searching image in media content')
         if 'media_content' in article:
-            image_url = article['media_content'][0]['url']
-            rospy.logdebug('>> Image selected from media_content: %s' % image_url)
-            found = True
-            if(len(article['media_content']) > 1):
-                rospy.logdebug('>> More than 1 media content: %s' % len(article['media_content']))
+            if 'url' in article['media_content'][0]:
+                image_url = article['media_content'][0]['url']
+                rospy.logdebug('>> Image selected from media_content: %s' % image_url)
+                found = True
+                if(len(article['media_content']) > 1):
+                    rospy.logdebug('>> More than 1 media content: %s' % len(article['media_content']))
         if(not found):
             rospy.logdebug('>> No image in media content')
 
@@ -356,6 +322,12 @@ class NewspaperSkill(Skill):
             return image_url, 'web'
 
     def show_feed_info(self, parsed_content):
+        """
+        Show feed info in terminal.
+
+        @param parsed_content: Parsed content of the feed.
+        """
+
         print('############### Feed: ###############')
         try:
             print(parsed_content['feed']['title'])
@@ -365,7 +337,9 @@ class NewspaperSkill(Skill):
                 print 'Xml NOT well-formed'
 
             print('Number of articles: ' + str(len(parsed_content['entries'])))
-            print('Image: ' + str(parsed_content['feed']['image']['href']))
+
+            print('Logo: ' + str(parsed_content['feed']['logo'])) if 'logo' in parsed_content['feed'] else 'No logo'
+            print('Image: ' + str(parsed_content['feed']['image']['href'])) if 'image' in parsed_content['feed'] else 'No image'
         except KeyError as e:
             rospy.logerr('KeyError: ' + str(e))
 
@@ -374,7 +348,11 @@ class NewspaperSkill(Skill):
 
     def show_article_info(self, article):
         """
-        Show info of the article in the terminal.
+        Show article info in terminal.
+
+        @param article: Article content.
+
+        @return result: -1 if error found in article, else 0.
         """
         if(article == -1):
             print('No more articles to show in the category %s' % self._category_name)
@@ -407,6 +385,13 @@ class NewspaperSkill(Skill):
         return 0
 
     def show_article_voice(self, article):
+        """
+        Show article info in etts.
+
+        @param article: Article content.
+
+        @return msg.ca_name: Etts CA name. If error found in article content, returns -1.
+        """
         rospy.loginfo('Showing article with voice')
         if(article == -1):
             text = 'No hay mas noticias que mostrar del dia de hoy'
@@ -435,6 +420,14 @@ class NewspaperSkill(Skill):
         return msg.ca_name
 
     def show_article_tablet(self, image_url, image_type):
+        """
+        Show article info in tablet.
+
+        @param image_url: Url of the image to be sent.
+        @param image_type: Type of the image to be sent.
+
+        @return msg.ca_name: Tablet CA name.
+        """
         rospy.loginfo('Sending image to tablet')
         msg = makeCA_tablet_info(image_url, image_type)
         self.ca_pub.publish(msg)
@@ -443,6 +436,10 @@ class NewspaperSkill(Skill):
     def new_article_finder(self, rss_info):
         '''
         Gets new article. Search in the cache file and if it is not there, it returns the info of the article.
+
+        @param rss_info: Parsed content of the feed.
+
+        @return article: Article found in the feed. If not found, returns -1. If feed not valid, returns -2.
         '''
 
         if(len(rss_info['entries']) == 0):
@@ -471,9 +468,9 @@ class NewspaperSkill(Skill):
     def rss_reader(self):
         """
         Rss management function.
-
-        @return parsed_content:
-        @return article:
+        
+        @return parsed_content: Parsed content of the feed.
+        @return article: Article content.
         """
 
         ######### Cache refreshing ########
@@ -517,13 +514,11 @@ class NewspaperSkill(Skill):
                         rospy.logerr("MissingSchema; %s" % e)
                         request_ok = False
                         out = True
-
                     else: # No errors
                         rospy.logdebug('Request done')
                         request_ok = True
                         out = True
 
-                    signal.alarm(0) # Disable the alarm
                     if(n_attempts>=n_attempts_max):
                         rospy.logwarn('attempts (%s) >= attempts max (%s)' % (n_attempts, n_attempts_max))
                         request_ok = False
@@ -567,8 +562,15 @@ class NewspaperSkill(Skill):
         """
         Show info handler.
 
-        @param art
+        @param parsed_content: Parsed content of the feed.
+        @param article: Article content.
+        @param image_url: Url of the image to be sent.
+        @param image_type: Type of the image to be sent.
+
+        @return tablet_name_msg: Tablet CA name.
+        @return etts_name_msg: Etts CA name.
         """
+
         # Feed info
         self.show_feed_info(parsed_content)
 
@@ -587,7 +589,11 @@ class NewspaperSkill(Skill):
         """
         Goal handler.
 
-        Checks if the goal is appropriate. If true, it fills the variable self._category_name.
+        Checks if the goal is appropriate. If true, it configures the variables for the goal execution.
+
+        @param goal: Goal received.
+
+        @return goal_accepted: True if goal is accepted, else, False.
         """
 
         # Fill variables
@@ -629,6 +635,13 @@ class NewspaperSkill(Skill):
         return True
 
     def exception_check(self, deactivation = [], t0 = -1, t1 = -1):
+        """
+        Checks if an exception has been asked. It can be by a preempt request or by a pause request.
+
+        @param deactivation: List of CA names to be deactivated (if exception requested)
+        @param t0: Time 0 to use for time_run (if exception requested)
+        @param t1: Time 1 to use for time_run (if exception requested)
+        """
 
         if(self._pause or self._as.is_preempt_requested()):
             # CA deactivation
@@ -658,17 +671,29 @@ class NewspaperSkill(Skill):
             return
 
     def pause_exec(self):
+        """
+        Modify the variable self._pause if goal is being handled, when a pause is requested.
+        """
+
         if(self._goal_exec): # Goal being handled
             self._pause = True
         else: # Goal NOT being handled
             rospy.logwarn('Goal not being handled')
 
     def resume_exec(self):
+        """
+        Modify the variable self._pause, when a resume is requested.
+        """
+
         self._pause = False
         self._feedback.app_status = 'resume_ok'
         self._as.publish_feedback(self._feedback)
 
     def pause_wait(self):
+        """
+        Pause loop. Finishes when goal is resumed or cancelled.
+        """
+
         rospy.loginfo('Start waiting')
         while(self._pause and not self._as.is_preempt_requested()):
             rospy.logdebug('waiting...')
@@ -837,7 +862,6 @@ class NewspaperSkill(Skill):
         #==============================================================#
 
         
-
 
 if __name__ == '__main__':
     try:

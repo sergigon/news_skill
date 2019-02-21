@@ -21,7 +21,6 @@ def makeCA_etts_info(etts_text):
     @param etts_text: Text to be sent.
 
     @return msg: CA message.
-    @return msg_name: CA name.
     """
 
     msg_name = str(rospy.get_rostime().nsecs)
