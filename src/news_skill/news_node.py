@@ -29,7 +29,7 @@ from bs4 import BeautifulSoup # http://villageblacksmith.consulting/extracting-i
 # Messages
 from std_msgs.msg import String, Empty
 from interaction_msgs.msg import CA
-import newspaper_skill.msg
+import news_skill.msg
 
 # Local libraries
 from exceptions_lib import PauseException, ErrorException
@@ -39,18 +39,18 @@ from cache_manager import CacheManager
 
 # Skill variables
 # Package name
-pkg_name = 'newspaper_skill'
+pkg_name = 'news_skill'
 # Skill name (declare this only if the name is different of 'pkg_name')
-skill_name = "newspaper_skill"
+skill_name = "news_skill"
 
-class NewspaperSkill(Skill):
+class NewsSkill(Skill):
     """
-    Newspaper skill class.
+    News skill class.
     """
 
     # Feedback and result of this skill
-    _feedback = newspaper_skill.msg.NewspaperFeedback()
-    _result = newspaper_skill.msg.NewspaperResult()
+    _feedback = news_skill.msg.NewsFeedback()
+    _result = news_skill.msg.NewsResult()
 
     # Node constants
 
@@ -202,7 +202,7 @@ class NewspaperSkill(Skill):
         # servers and clients
         # Si el servidor actionlib no se ha inicializado:
         if not self._as:
-            self._as = actionlib.SimpleActionServer(skill_name, newspaper_skill.msg.NewspaperAction, execute_cb=self.execute_cb, auto_start=False)
+            self._as = actionlib.SimpleActionServer(skill_name, news_skill.msg.NewsAction, execute_cb=self.execute_cb, auto_start=False)
             # start the action server
             self._as.start()
 
@@ -697,7 +697,7 @@ class NewspaperSkill(Skill):
         """
         Callback of the node. Activated when a goal is received.
 
-        @param goal: newspaper_skill goal.
+        @param goal: news_skill goal.
         """
 
         self._pause = False
@@ -864,7 +864,7 @@ if __name__ == '__main__':
         rospy.loginfo('[' + pkg_name + ': ' + skill_name + ']')
 
         # create and spin the node
-        node = NewspaperSkill()
+        node = NewsSkill()
         rospy.sleep(1)
 
         rate = rospy.Rate(10)

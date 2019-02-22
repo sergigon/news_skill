@@ -2,7 +2,7 @@
 <launch>
 	<arg name="robot"/>
 	<group ns="$(arg robot)">
-		<node name="newspaper_skill" pkg="newspaper_skill" type="newspaper_node.py" output="screen"/>
+		<node name="news_skill" pkg="news_skill" type="news_node.py" output="screen"/>
 	</group>
 </launch>
 

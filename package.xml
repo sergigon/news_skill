@@ -1,13 +1,13 @@
 <?xml version="1.0"?>
 <package format="2">
-  <name>newspaper_skill</name>
+  <name>news_skill</name>
   <version>0.0.0</version>
-  <description>The newspaper_skill package</description>
+  <description>The news_skill package</description>
 
   <!-- One maintainer tag required, multiple allowed, one person per tag -->
   <!-- Example:  -->
   <!-- <maintainer email="jane.doe@example.com">Jane Doe</maintainer> -->
-  <maintainer email="user@todo.todo">user</maintainer>
+  <maintainer email="sergigon@ing.uc3m.es">user</maintainer>
 
 
   <!-- One license tag required, multiple allowed, one license per tag -->
@@ -19,7 +19,7 @@
   <!-- Url tags are optional, but multiple are allowed, one per tag -->
   <!-- Optional attribute type can be: website, bugtracker, or repository -->
   <!-- Example: -->
-  <!-- <url type="website">http://wiki.ros.org/newspaper_skill</url> -->
+  <!-- <url type="website">http://wiki.ros.org/news_skill</url> -->
 
 
   <!-- Author tags are optional, multiple are allowed, one per tag -->

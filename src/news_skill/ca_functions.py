@@ -30,7 +30,7 @@ def makeCA_etts_info(etts_text):
     msg.ca_name = msg_name
     msg.duration = 0
     msg.priority = 1
-    msg.emitter = "newspaper_ca"
+    msg.emitter = "news_ca"
     
     kvp = kvpa()
     kvp.key = "etts_text"
@@ -56,7 +56,7 @@ def makeCA_tablet_info(image_url, image_type):
     msg.ca_name = msg_name
     msg.duration = 0
     msg.priority = 1
-    msg.emitter = "newspaper_ca"
+    msg.emitter = "news_ca"
     
     kvp = kvpa()
     kvp.key = "tablet_type"
