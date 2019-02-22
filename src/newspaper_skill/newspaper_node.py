@@ -32,7 +32,7 @@ from interaction_msgs.msg import CA
 import newspaper_skill.msg
 
 # Local libraries
-import exceptions_lib
+from exceptions_lib import PauseException, ErrorException
 from ca_functions import makeCA_tablet_info, makeCA_etts_info
 from general_functions import html2text_conv
 from cache_manager import CacheManager
@@ -42,12 +42,6 @@ from cache_manager import CacheManager
 pkg_name = 'newspaper_skill'
 # Skill name (declare this only if the name is different of 'pkg_name')
 skill_name = "newspaper_skill"
-
-class PauseException(Exception):
-    pass
-
-class ErrorException(Exception):
-    pass
 
 class NewspaperSkill(Skill):
     """
@@ -190,7 +184,7 @@ class NewspaperSkill(Skill):
         # init the skill
         Skill.__init__(self, skill_name, CONDITIONAL)
 
-
+######################### Skill callbacks #########################
     def create_msg_srv(self):
         """
         Callback when a start is requested (and skill is stopped).
@@ -226,6 +220,72 @@ class NewspaperSkill(Skill):
         self._as.preempt_request = True
 
         # servers and clients
+
+    def pause_exec(self):
+        """
+        Modify the variable self._pause if goal is being handled, when a pause is requested.
+        """
+
+        if(self._goal_exec): # Goal being handled
+            self._pause = True
+        else: # Goal NOT being handled
+            rospy.logwarn('Goal not being handled')
+
+    def resume_exec(self):
+        """
+        Modify the variable self._pause, when a resume is requested.
+        """
+
+        self._pause = False
+        self._feedback.app_status = 'resume_ok'
+        self._as.publish_feedback(self._feedback)
+#=================================================================#
+    
+    def exception_check(self, deactivation = [], t0 = -1, t1 = -1):
+        """
+        Checks if an exception has been asked. It can be by a preempt request or by a pause request.
+
+        @param deactivation: List of CA names to be deactivated (if exception requested)
+        @param t0: Time 0 to use for time_run (if exception requested)
+        @param t1: Time 1 to use for time_run (if exception requested)
+        """
+
+        # Parameters update
+        if(self._pause or self._as.is_preempt_requested()):
+            # CA deactivation
+            if(len(deactivation)>0):
+                for msg_name in deactivation:
+                    rospy.logdebug('Deactivating CA: %s' % msg_name)
+                    self.ca_deactivation_pub.publish(msg_name)
+            # Time update
+            if(t0!=-1 and t1!=-1):
+                self._time_run += t1 - t0
+
+        # Raise exceptions
+        ############# State Preempted checking #############
+        # If goal is in Preempted state (that is, there    #
+        # is a goal in the queue or the actual goal is     #
+        # cancelled), the exception is activated.          #
+        ####################################################
+        if(self._as.is_preempt_requested()):
+            rospy.logwarn("Preempt requested")
+            raise ActionlibException
+            return
+        
+        ###################### Pause #######################
+        if(self._pause):
+            raise PauseException
+            return
+
+    def pause_wait(self):
+        """
+        Pause loop. Finishes when goal is resumed or cancelled.
+        """
+
+        rospy.loginfo('Start waiting')
+        while(self._pause and not self._as.is_preempt_requested()):
+            rospy.logdebug('waiting...')
+            rospy.sleep(1)
 
     def get_image(self, article):
         """
@@ -344,7 +404,6 @@ class NewspaperSkill(Skill):
             rospy.logerr('KeyError: ' + str(e))
 
         print('#####################################')
-
 
     def show_article_info(self, article):
         """
@@ -465,6 +524,33 @@ class NewspaperSkill(Skill):
         if(found):
             return -1
 
+    def show_info_handler(self, parsed_content, article, image_url, image_type):
+        """
+        Show info handler.
+
+        @param parsed_content: Parsed content of the feed.
+        @param article: Article content.
+        @param image_url: Url of the image to be sent.
+        @param image_type: Type of the image to be sent.
+
+        @return tablet_name_msg: Tablet CA name.
+        @return etts_name_msg: Etts CA name.
+        """
+
+        # Feed info
+        self.show_feed_info(parsed_content)
+
+        # Shows the info in the article
+        self.show_article_info(article)
+
+        # Shows image on the tablet
+        tablet_name_msg = self.show_article_tablet(image_url, image_type)
+
+        # Shows info with voice
+        etts_name_msg = self.show_article_voice(article)
+
+        return tablet_name_msg, etts_name_msg
+
     def rss_reader(self):
         """
         Rss management function.
@@ -558,33 +644,6 @@ class NewspaperSkill(Skill):
         
         return -1, -1
 
-    def show_info_handler(self, parsed_content, article, image_url, image_type):
-        """
-        Show info handler.
-
-        @param parsed_content: Parsed content of the feed.
-        @param article: Article content.
-        @param image_url: Url of the image to be sent.
-        @param image_type: Type of the image to be sent.
-
-        @return tablet_name_msg: Tablet CA name.
-        @return etts_name_msg: Etts CA name.
-        """
-
-        # Feed info
-        self.show_feed_info(parsed_content)
-
-        # Shows the info in the article
-        self.show_article_info(article)
-
-        # Shows image on the tablet
-        tablet_name_msg = self.show_article_tablet(image_url, image_type)
-
-        # Shows info with voice
-        etts_name_msg = self.show_article_voice(article)
-
-        return tablet_name_msg, etts_name_msg
-
     def goal_handler(self, goal):
         """
         Goal handler.
@@ -634,71 +693,6 @@ class NewspaperSkill(Skill):
         rospy.loginfo('Goal accepted')
         return True
 
-    def exception_check(self, deactivation = [], t0 = -1, t1 = -1):
-        """
-        Checks if an exception has been asked. It can be by a preempt request or by a pause request.
-
-        @param deactivation: List of CA names to be deactivated (if exception requested)
-        @param t0: Time 0 to use for time_run (if exception requested)
-        @param t1: Time 1 to use for time_run (if exception requested)
-        """
-
-        if(self._pause or self._as.is_preempt_requested()):
-            # CA deactivation
-            if(len(deactivation)>0):
-                print 'deactivation'
-                for msg_name in deactivation:
-                    rospy.logdebug('Deactivating CA: %s' % msg_name)
-                    self.ca_deactivation_pub.publish(msg_name)
-            # Time update
-            if(t0!=-1 and t1!=-1):
-                self._time_run += t1 - t0
-
-        ############# State Preempted checking #############
-        # Si el goal esta en estado Preempted (es decir,   #
-        # hay un goal en cola o se cancela el goal         #
-        # actual), activo la excepcion                     #
-        ####################################################
-        if(self._as.is_preempt_requested()):
-            rospy.logwarn("Preempt requested")
-            raise ActionlibException
-            return
-        #==================================================#
-        
-        ########### Pause ###########
-        if(self._pause):
-            raise PauseException
-            return
-
-    def pause_exec(self):
-        """
-        Modify the variable self._pause if goal is being handled, when a pause is requested.
-        """
-
-        if(self._goal_exec): # Goal being handled
-            self._pause = True
-        else: # Goal NOT being handled
-            rospy.logwarn('Goal not being handled')
-
-    def resume_exec(self):
-        """
-        Modify the variable self._pause, when a resume is requested.
-        """
-
-        self._pause = False
-        self._feedback.app_status = 'resume_ok'
-        self._as.publish_feedback(self._feedback)
-
-    def pause_wait(self):
-        """
-        Pause loop. Finishes when goal is resumed or cancelled.
-        """
-
-        rospy.loginfo('Start waiting')
-        while(self._pause and not self._as.is_preempt_requested()):
-            rospy.logdebug('waiting...')
-            rospy.sleep(1)
-
     def execute_cb(self, goal):
         """
         Callback of the node. Activated when a goal is received.
@@ -730,6 +724,7 @@ class NewspaperSkill(Skill):
             ###################### Exec while ######################
             while(not self._exec_out):
                 try:
+                    rospy.loginfo('Next step: %s' % self._step)
                     # Wait loop
                     self.pause_wait() # If wait is asked it enters a loop
 
@@ -862,7 +857,6 @@ class NewspaperSkill(Skill):
         #==============================================================#
 
         
-
 if __name__ == '__main__':
     try:
         # start the node

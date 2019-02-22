@@ -14,3 +14,9 @@ __status__ = "Development"
 # Exceptions
 class TimeOut(Exception):
     pass
+
+class PauseException(Exception):
+    pass
+
+class ErrorException(Exception):
+    pass
